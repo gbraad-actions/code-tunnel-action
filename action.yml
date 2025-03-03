@@ -1,0 +1,52 @@
+name: "Code"
+description: "Installs and runs Code in tunneled mode for debugging purpose"
+author: "Gerard Braad <me@gbraad.nl>"
+runs:
+  using: 'composite'
+  steps:
+    - name: Install Code
+      id: setup
+      shell: bash
+      run: |
+        arch=$(uname -m)
+        case "$arch" in
+          x86_64)
+            download_target="x64"
+            ;;
+          i386 | i686)
+            download_target="x86"
+            ;;
+          armv7l)
+            download_target="arm32"
+            ;;
+          aarch64)
+            download_target="arm64"
+            ;;
+          *)
+            echo "Unsupported architecture: $arch"
+            return 1
+            ;;
+        esac
+
+        echo "Installing code-cli for: ${download_target}"
+        tempfile=$(mktemp)
+        curl -fsSL "https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-${download_target}" -o ${tempfile}
+        sudo tar -zxvf ${tempfile} -C /usr/bin/ > /dev/null 2>&1
+        rm -f ${tempfile}
+        sudo cp ${{ github.action_path }}/code-tunnel@.service /etc/systemd/system/
+        sudo systemctl daemon-reload
+    - name: Setup tunnel
+      shell: bash
+      run: |
+        code tunnel user login --provider github
+        sudo systemctl enable --now code-tunnel@runner
+    - name: Hang around
+      shell: bash
+      run: |
+        sleep 5
+        echo "Open in a browser: https://vscode.dev/tunnel/${HOSTNAME}"
+        echo "or connect to tunnel: ${HOSTNAME} using VS Code"
+        until ! systemctl is-active --quiet code-tunnel@runner.service
+        do
+          sleep 30
+        done
